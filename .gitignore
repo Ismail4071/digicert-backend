@@ -70,6 +70,12 @@ web_modules/
 .env.*
 !.env.example
 
+# Generated assets and uploads
+assets/
+certificates/
+qrcodes/
+uploads/
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
