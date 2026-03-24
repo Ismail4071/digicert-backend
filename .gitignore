@@ -71,7 +71,7 @@ web_modules/
 !.env.example
 
 # Generated assets and uploads
-assets/
+# assets/
 certificates/
 qrcodes/
 uploads/
