@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const createAuditLog = require('../utils/auditLogger');
 
 // ── REGISTER ──
 exports.register = async (req, res) => {
@@ -15,6 +16,12 @@ exports.register = async (req, res) => {
     name,
     email,
     password: hashedPassword
+  });
+
+  await createAuditLog({
+    action:      "USER_REGISTERED",
+    performedBy: user._id,
+    details:     `New user registered: ${name} (${email})`,
   });
 
   res.status(201).json({ message: "User registered successfully" });
@@ -36,13 +43,18 @@ exports.login = async (req, res) => {
     { expiresIn: '1d' }
   );
 
+  await createAuditLog({
+    action:      "USER_LOGIN",
+    performedBy: user._id,
+    details:     `User logged in: ${user.name} (${email})`,
+  });
+
   res.json({ token, role: user.role, name: user.name });
 };
 
 // ── RESET PASSWORD ──
 exports.resetPassword = async (req, res) => {
   const { email, newPassword } = req.body;
-
   try {
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ message: "Email not found" });
@@ -50,6 +62,12 @@ exports.resetPassword = async (req, res) => {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     user.password = hashedPassword;
     await user.save();
+
+    await createAuditLog({
+      action:      "PASSWORD_RESET",
+      performedBy: user._id,
+      details:     `Password reset for: ${email}`,
+    });
 
     res.json({ message: "Password changed successfully" });
   } catch (err) {
@@ -92,6 +110,13 @@ exports.changePassword = async (req, res) => {
     if (!isMatch) return res.status(400).json({ message: "Current password is incorrect" });
     user.password = await bcrypt.hash(newPassword, 10);
     await user.save();
+
+    await createAuditLog({
+      action:      "PASSWORD_CHANGED",
+      performedBy: req.user.id,
+      details:     `Password changed for user: ${user.email}`,
+    });
+
     res.json({ message: "Password changed successfully" });
   } catch (err) {
     res.status(500).json({ message: "Server error" });

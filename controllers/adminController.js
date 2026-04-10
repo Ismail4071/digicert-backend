@@ -63,7 +63,7 @@ exports.getStats = async (req, res) => {
   }
 };
 
-// ── APPROVE ── (FIXED: applies correction before PDF generation)
+// ── APPROVE ──
 exports.approveCertificate = async (req, res) => {
   try {
     const cert = await Certificate.findById(req.params.id);
@@ -74,20 +74,21 @@ exports.approveCertificate = async (req, res) => {
     if ((cert.status || "").toLowerCase() === "revoked")
       return res.status(400).json({ message: "Revoked certificate cannot approve" });
 
-    // ===== APPLY CORRECTION (if this was a correction request) =====
+    // ===== APPLY CORRECTION =====
     if (cert.correctionType && cert.correctValue) {
       const type = (cert.correctionType || "").toLowerCase();
-      if      (type.includes("course"))      cert.courseName     = cert.correctValue;
-      else if (type.includes("spelling") || (type.includes("name") && !type.includes("course"))) cert.studentName = cert.correctValue;
-      else if (type.includes("date"))        cert.completionDate = cert.correctValue;
-      else if (type.includes("grade"))       cert.grade          = cert.correctValue;
-      else if (type.includes("institution")) cert.institution    = cert.correctValue;
+      if      (type.includes("institution"))                        cert.institution    = cert.correctValue;
+      else if (type.includes("course"))                             cert.courseName     = cert.correctValue;
+      else if (type.includes("spelling") || type.includes("name"))  cert.studentName    = cert.correctValue;
+      else if (type.includes("date"))                               cert.completionDate = cert.correctValue;
+      else if (type.includes("grade"))                              cert.grade          = cert.correctValue;
+      else if (type.includes("mismatch") || type.includes("id"))    cert.certificateId  = cert.correctValue;
       console.log(`Correction applied [${cert.correctionType}]: "${cert.currentValue}" → "${cert.correctValue}"`);
     }
 
     // ===== UPDATE STATUS =====
-    cert.status    = "APPROVED";
-    cert.issueDate = new Date();
+    cert.status = "APPROVED";
+    if (!cert.issueDate) cert.issueDate = cert.completionDate || new Date();
 
     // ===== UPDATE PROOF STATUS =====
     await Proof.findOneAndUpdate(
@@ -95,7 +96,7 @@ exports.approveCertificate = async (req, res) => {
       { status: "VERIFIED" }
     );
 
-    // ===== DECRYPT DATA (fallback to stored fields) =====
+    // ===== DECRYPT DATA =====
     let decrypted = {};
     try {
       const raw = decryptData(cert.encryptedData);
@@ -116,8 +117,8 @@ exports.approveCertificate = async (req, res) => {
     if (!fs.existsSync(qrDir)) fs.mkdirSync(qrDir, { recursive: true });
     const qrPath = path.join(qrDir, `${cert.certificateId}.png`);
     await QRCode.toFile(qrPath, verifyUrl);
-    cert.qrCode  = qrPath;
-    cert.qrPath  = qrPath;
+    cert.qrCode = qrPath;
+    cert.qrPath = qrPath;
 
     // ===== PDF GENERATION =====
     const result = await generatePDF({
@@ -240,10 +241,7 @@ exports.getAuditLogs = async (req, res) => {
   }
 };
 
-
-// ══════════════════════════════════════
-// DELETE CERTIFICATE (Admin - any)
-// ══════════════════════════════════════
+// ── DELETE CERTIFICATE ──
 exports.deleteCertificate = async (req, res) => {
   try {
     const cert = await Certificate.findById(req.params.id);
